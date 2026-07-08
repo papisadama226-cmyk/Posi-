@@ -164,9 +164,17 @@
 
         let avatarUrl = "";
         if (avatarFile) {
-          const ref = storage.ref(`avatars/${uid}`);
-          await ref.put(avatarFile);
-          avatarUrl = await ref.getDownloadURL();
+          try {
+            const ref = storage.ref(`avatars/${uid}`);
+            await ref.put(avatarFile);
+            avatarUrl = await ref.getDownloadURL();
+          } catch (storageErr) {
+            // Storage nécessite le forfait Firebase "Blaze". On ne bloque pas
+            // l'inscription pour autant : le compte est créé avec un avatar
+            // par défaut, et l'utilisateur pourra ajouter une photo plus tard.
+            console.warn("Upload de la photo impossible (Storage indisponible) :", storageErr);
+            showToast("Compte créé sans photo (Firebase Storage indisponible).");
+          }
         }
 
         await cred.user.updateProfile({ displayName: name, photoURL: avatarUrl || null });
@@ -207,8 +215,14 @@
       "auth/user-not-found": "Aucun compte ne correspond à cet email.",
       "auth/wrong-password": "Mot de passe incorrect.",
       "auth/invalid-credential": "Email ou mot de passe incorrect.",
+      "auth/operation-not-allowed": "La connexion par email/mot de passe n'est pas activée dans Firebase (Authentication → Sign-in method).",
+      "auth/unauthorized-domain": "Ce domaine n'est pas autorisé dans Firebase (Authentication → Settings → Domaines autorisés).",
+      "permission-denied": "Accès refusé par les règles Firestore/Storage — vérifie qu'elles sont bien publiées.",
+      "storage/unauthorized": "Accès refusé par les règles Firebase Storage — vérifie qu'elles sont bien publiées.",
+      "storage/unknown": "Firebase Storage ne semble pas activé pour ce projet (Storage → Commencer).",
     };
-    return map[err.code] || "Une erreur est survenue. Réessaie.";
+    const code = err.code || "erreur inconnue";
+    return map[code] || `Erreur (${code}) : ${err.message || "réessaie."}`;
   }
 
   function setupLogout() {
