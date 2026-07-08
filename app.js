@@ -145,16 +145,22 @@
         return;
       }
 
+      let cred = null;
       try {
-        // Vérifie l'unicité du pseudo
+        // On crée d'abord le compte : les règles Firestore exigent un
+        // utilisateur authentifié pour lire/écrire, donc la vérification
+        // du pseudo doit se faire APRÈS la connexion.
+        cred = await auth.createUserWithEmailAndPassword(email, password);
+        const uid = cred.user.uid;
+
+        // Vérifie l'unicité du pseudo maintenant que l'utilisateur est authentifié
         const dup = await db.collection("users").where("username", "==", username).limit(1).get();
-        if (!dup.empty) {
+        const takenByAnother = dup.docs.some((d) => d.id !== uid);
+        if (takenByAnother) {
+          await cred.user.delete().catch(() => {});
           errorEl.textContent = "Ce pseudo est déjà pris.";
           return;
         }
-
-        const cred = await auth.createUserWithEmailAndPassword(email, password);
-        const uid = cred.user.uid;
 
         let avatarUrl = "";
         if (avatarFile) {
@@ -183,6 +189,12 @@
         });
       } catch (err) {
         errorEl.textContent = friendlyAuthError(err);
+        // Si le compte a été créé mais qu'une étape suivante a échoué
+        // (upload photo, écriture Firestore...), on nettoie pour éviter
+        // un compte fantôme sans profil.
+        if (cred && cred.user && !state.profile) {
+          cred.user.delete().catch(() => {});
+        }
       }
     });
   }
